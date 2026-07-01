@@ -93,6 +93,40 @@
     .btn-delete { background: #ff00ff; color: white; }
     .drag-handle { text-align: center; font-size: 1.2rem; margin-bottom: 10px; cursor: grab; background: rgba(255,255,255,0.05); border-radius: 30px; padding: 5px; border: 1px solid; }
     .drag-handle:active { cursor: grabbing; }
+
+    /* Estilos para arrastrar secciones en admin */
+    .seccion-drag-item {
+      padding: 10px 16px;
+      margin: 4px;
+      border-radius: 20px;
+      cursor: grab;
+      transition: all 0.2s ease;
+      border: 2px solid;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: bold;
+      background: rgba(0,0,0,0.3);
+    }
+    .seccion-drag-item:active { cursor: grabbing; }
+    .seccion-drag-item.dragging { opacity: 0.4; }
+    .seccion-drag-item.drag-over { transform: scale(1.05); box-shadow: 0 0 20px currentColor; }
+    .seccion-drag-item .drag-icon { font-size: 1.2rem; opacity: 0.6; }
+    .seccion-drag-item .delete-btn { 
+      background: #ff00ff; 
+      border: none; 
+      border-radius: 50%; 
+      width: 24px; 
+      height: 24px; 
+      color: white; 
+      cursor: pointer; 
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 4px;
+    }
+    .seccion-drag-item .delete-btn:hover { transform: scale(1.1); }
   </style>
 </head>
 <body>
@@ -141,7 +175,13 @@
         <button onclick="cerrarAdmin()" style="background: #22223b; border: 2px solid #ff00ff; border-radius: 40px; padding: 12px 24px; font-size: 1.4rem; color: white; cursor: pointer;">CERRAR</button>
       </div>
     </div>
-    <div id="seccionesAdminList" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; background: #0c0c16; padding: 15px; border-radius: 20px; border: 1px solid #22223b;"></div>
+    
+    <!-- SECCIONES REORDENABLES CON ARRASTRE -->
+    <div style="margin-bottom: 20px; background: #0c0c16; padding: 15px; border-radius: 20px; border: 1px solid #22223b;">
+      <p style="color: #888; font-size: 1.2rem; margin-bottom: 10px;">🔄 Arrastra las secciones para reordenarlas:</p>
+      <div id="seccionesDragList" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 60px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 16px;"></div>
+    </div>
+    
     <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;" id="adminTabsContainer"></div>
     <div id="admin-contenido" style="background: #0c0c16; border-radius: 20px; padding: 20px; margin-bottom: 20px; border: 1px solid #22223b;">
       <p style="color: #888; text-align: center; font-size: 1.8rem;">Selecciona una sección para editar</p>
@@ -177,7 +217,7 @@
       cbd: COLORES_NEON.azulElectro
     };
 
-    // ========== DATOS MAESTROS (SIEMPRE ACTUALES) ==========
+    // ========== DATOS MAESTROS ==========
     const DATOS_MAESTROS = [
       { 
         id: "extracciones", 
@@ -317,7 +357,7 @@
     ];
 
     let secciones = [];
-
+    let draggedSectionIndex = null;
     let draggedIndex = null, currentSecId = null;
 
     function getColorForSection(sec) {
@@ -327,15 +367,13 @@
 
     function cargarDatos() {
       const versionGuardada = localStorage.getItem(VERSION_KEY);
-      const versionActual = '2.0';
+      const versionActual = '2.1';
       
-      // Si no hay versión o es diferente, forzar carga de datos maestros
       if (versionGuardada !== versionActual) {
         secciones = JSON.parse(JSON.stringify(DATOS_MAESTROS));
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ secciones }));
         localStorage.setItem(VERSION_KEY, versionActual);
       } else {
-        // Si la versión coincide, intentar cargar desde localStorage
         const guardado = localStorage.getItem(STORAGE_KEY);
         if (guardado) {
           try {
@@ -350,7 +388,6 @@
         }
       }
       
-      // Asegurar que todas las secciones tengan la estructura correcta
       secciones.forEach(sec => {
         if (!sec.colorKey) {
           const map = { extracciones:'extracciones', hierbas:'hierbas', hash:'hash', liados:'liados', munchies:'munchies', eventos:'eventos', cbd:'cbd' };
@@ -367,7 +404,7 @@
 
     function guardarCompleto() { 
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ secciones })); 
-      localStorage.setItem(VERSION_KEY, '2.0');
+      localStorage.setItem(VERSION_KEY, '2.1');
       mostrarIndicator(); 
     }
     
@@ -475,7 +512,74 @@
       });
     }
 
-    // ADMIN FUNCTIONS
+    // ========== FUNCIONES PARA ARRASTRAR SECCIONES ==========
+    function renderSeccionesDragList() {
+      const container = document.getElementById('seccionesDragList');
+      if (!container) return;
+      container.innerHTML = '';
+      
+      secciones.forEach((sec, idx) => {
+        const color = getColorForSection(sec);
+        const item = document.createElement('div');
+        item.className = 'seccion-drag-item';
+        item.style.borderColor = color.color;
+        item.style.color = color.color;
+        item.draggable = true;
+        item.dataset.index = idx;
+        
+        item.innerHTML = `
+          <span class="drag-icon">⠿</span>
+          ${sec.icono} ${sec.nombre}
+          <button class="delete-btn" onclick="eliminarSeccion(${idx})" title="Eliminar sección">✕</button>
+        `;
+        
+        item.addEventListener('dragstart', (e) => {
+          draggedSectionIndex = idx;
+          e.dataTransfer.setData('text/plain', idx);
+          item.classList.add('dragging');
+        });
+        
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          document.querySelectorAll('.seccion-drag-item').forEach(el => el.classList.remove('drag-over'));
+        });
+        
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          document.querySelectorAll('.seccion-drag-item').forEach(el => el.classList.remove('drag-over'));
+          item.classList.add('drag-over');
+        });
+        
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over');
+        });
+        
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-over');
+          const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+          if (fromIndex !== idx) {
+            const [moved] = secciones.splice(fromIndex, 1);
+            secciones.splice(idx, 0, moved);
+            guardarCompleto();
+            renderizarTodo();
+            renderAdminUI();
+            // Mantener la sección seleccionada si estaba abierta
+            const activeTab = document.querySelector('#adminTabsContainer .seccion-drag-item');
+            if (activeTab) {
+              const secId = activeTab.dataset.secId;
+              if (secId) mostrarSeccionAdmin(secId);
+            }
+          }
+          document.querySelectorAll('.seccion-drag-item').forEach(el => el.classList.remove('drag-over'));
+          draggedSectionIndex = null;
+        });
+        
+        container.appendChild(item);
+      });
+    }
+
+    // ========== ADMIN FUNCTIONS ==========
     function mostrarLogin() { document.getElementById('panel-login').style.display = 'flex'; document.getElementById('login-password').value = ''; }
     function cerrarLogin() { document.getElementById('panel-login').style.display = 'none'; document.getElementById('login-error').style.display = 'none'; }
     function comprobarLogin() {
@@ -489,30 +593,38 @@
     function cerrarAdmin() { document.getElementById('panel-admin').style.display = 'none'; document.body.classList.remove('admin-mode'); }
     
     function renderAdminUI() {
-      const seccionesList = document.getElementById('seccionesAdminList');
-      seccionesList.innerHTML = '<strong style="color:#ff00ff;">🗑️ Eliminar sección:</strong>';
-      secciones.forEach((sec, idx) => {
-        const btn = document.createElement('button');
-        btn.textContent = `❌ ${sec.nombre}`;
-        btn.style.background = getColorForSection(sec).color;
-        btn.style.borderRadius = '20px'; btn.style.padding = '8px 16px'; btn.style.margin = '4px'; btn.style.cursor = 'pointer';
-        btn.onclick = () => eliminarSeccion(idx);
-        seccionesList.appendChild(btn);
-      });
+      // Renderizar lista de secciones arrastrables
+      renderSeccionesDragList();
+      
       const tabs = document.getElementById('adminTabsContainer');
       tabs.innerHTML = '';
       secciones.forEach(sec => {
         const col = getColorForSection(sec);
         const btn = document.createElement('button');
         btn.textContent = `${sec.icono} ${sec.nombre}`;
-        btn.style.background = col.bg; btn.style.border = `2px solid ${col.color}`; btn.style.borderRadius = '20px'; btn.style.padding = '10px 20px'; btn.style.cursor = 'pointer'; btn.style.color = col.color;
+        btn.style.background = col.bg; 
+        btn.style.border = `2px solid ${col.color}`; 
+        btn.style.borderRadius = '20px'; 
+        btn.style.padding = '10px 20px'; 
+        btn.style.cursor = 'pointer'; 
+        btn.style.color = col.color;
+        btn.dataset.secId = sec.id;
         btn.onclick = () => mostrarSeccionAdmin(sec.id);
         tabs.appendChild(btn);
       });
       document.getElementById('addNewSectionBtn').onclick = () => añadirNuevaSeccion();
     }
     
-    function eliminarSeccion(idx) { if(secciones.length<=1) { alert("No se puede eliminar la única sección"); return; } if(confirm(`¿Eliminar ${secciones[idx].nombre}?`)) { secciones.splice(idx,1); guardarCompleto(); renderizarTodo(); renderAdminUI(); document.getElementById('admin-contenido').innerHTML = '<p style="color:#888;">Selecciona una sección</p>'; } }
+    function eliminarSeccion(idx) { 
+      if(secciones.length<=1) { alert("No se puede eliminar la única sección"); return; } 
+      if(confirm(`¿Eliminar ${secciones[idx].nombre}?`)) { 
+        secciones.splice(idx,1); 
+        guardarCompleto(); 
+        renderizarTodo(); 
+        renderAdminUI(); 
+        document.getElementById('admin-contenido').innerHTML = '<p style="color:#888;">Selecciona una sección</p>'; 
+      } 
+    }
     
     function añadirNuevaSeccion() {
       let nombre = prompt("Nombre:"); if(!nombre) return;
@@ -526,7 +638,10 @@
       else if(tipo==='eventos') nueva.items = [];
       else if(tipo==='munchies') nueva.sub = { bebidas:[], picar:[] };
       secciones.push(nueva);
-      guardarCompleto(); renderizarTodo(); renderAdminUI(); mostrarSeccionAdmin(newId);
+      guardarCompleto(); 
+      renderizarTodo(); 
+      renderAdminUI(); 
+      mostrarSeccionAdmin(newId);
     }
     
     function mostrarSeccionAdmin(secId) {
